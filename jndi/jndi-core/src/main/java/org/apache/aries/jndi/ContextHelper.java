@@ -181,13 +181,18 @@ public final class ContextHelper {
     }
 
     private static Optional<ContextProvider> getInitialContextUsingBuilder(BundleContext context,
-                                                                           Hashtable<?, ?> environment) {
+                                                                           Hashtable<?, ?> environment) throws NamingException {
+    	NamingException getInitialContextException=null;
         for (ServiceReference<InitialContextFactoryBuilder> ref : Activator.getInitialContextFactoryBuilderServices()) {
             InitialContextFactoryBuilder builder = Activator.getService(context, ref);
             try {
                 InitialContextFactory factory = builder.createInitialContextFactory(environment);
                 if (factory != null) {
-                    return Optional.of(new SingleContextProvider(context, ref, factory.getInitialContext(environment)));
+                    try {
+						return Optional.of(new SingleContextProvider(context, ref, factory.getInitialContext(environment)));
+					} catch (NamingException e) {
+						getInitialContextException=e;
+					}
                 }
             } catch (NamingException ne) {
                 // ignore this, if the builder fails we want to move onto the next one
@@ -197,7 +202,9 @@ public final class ContextHelper {
                 throw npe;
             }
         }
+        if (getInitialContextException!=null) {
+        	throw getInitialContextException;
+        }
         return Optional.empty();
     }
-
 }
