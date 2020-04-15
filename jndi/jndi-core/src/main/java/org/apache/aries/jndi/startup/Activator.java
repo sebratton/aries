@@ -119,8 +119,19 @@ public class Activator implements BundleActivator {
 
     public void start(BundleContext context) {
         instance = this;
-
-        bundleServiceCaches = new BundleTracker<ServiceCache>(context, Bundle.ACTIVE, null) {
+        BundleContext trackerBundleContext;
+        /* force use of system context to allow full bundle/service visibility for trackers */
+        if ( !Boolean.getBoolean("org.apache.aries.jndi.trackersUseLocalContext") /*globalExtender*/ ){
+        	trackerBundleContext = context.getBundle(Constants.SYSTEM_BUNDLE_LOCATION).getBundleContext();
+        	if (trackerBundleContext==null) {
+                throw new IllegalStateException();
+        	}
+        }
+        else {
+        	trackerBundleContext = context;
+        }
+        
+        bundleServiceCaches = new BundleTracker<ServiceCache>(trackerBundleContext, Bundle.ACTIVE, null) {
             @Override
             public ServiceCache addingBundle(Bundle bundle, BundleEvent event) {
                 return new ServiceCache(bundle.getBundleContext());
@@ -135,10 +146,10 @@ public class Activator implements BundleActivator {
         };
         bundleServiceCaches.open();
 
-        initialContextFactories = new CachingServiceTracker<>(context, InitialContextFactory.class, Activator::getInitialContextFactoryInterfaces);
-        objectFactories = new CachingServiceTracker<>(context, ObjectFactory.class, Activator::getObjectFactorySchemes);
-        icfBuilders = new CachingServiceTracker<>(context, InitialContextFactoryBuilder.class);
-        urlObjectFactoryFinders = new CachingServiceTracker<>(context, URLObjectFactoryFinder.class);
+        initialContextFactories = new CachingServiceTracker<>(trackerBundleContext, InitialContextFactory.class, Activator::getInitialContextFactoryInterfaces);
+        objectFactories = new CachingServiceTracker<>(trackerBundleContext, ObjectFactory.class, Activator::getObjectFactorySchemes);
+        icfBuilders = new CachingServiceTracker<>(trackerBundleContext, InitialContextFactoryBuilder.class);
+        urlObjectFactoryFinders = new CachingServiceTracker<>(trackerBundleContext, URLObjectFactoryFinder.class);
 
         if (!disableBuilder(context)) {
             try {
