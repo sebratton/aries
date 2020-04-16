@@ -120,18 +120,19 @@ public class Activator implements BundleActivator {
     public void start(BundleContext context) {
         instance = this;
         BundleContext trackerBundleContext;
-        /* force use of system context to allow full bundle/service visibility for trackers */
-        if ( !Boolean.getBoolean("org.apache.aries.jndi.trackersUseLocalContext") /*globalExtender*/ ){
+        /* Use system context to allow trackers full bundle/service visibility. */
+        if ( !Boolean.getBoolean("org.apache.aries.jndi.trackersUseLocalContext") ){
         	trackerBundleContext = context.getBundle(Constants.SYSTEM_BUNDLE_LOCATION).getBundleContext();
         	if (trackerBundleContext==null) {
-                throw new IllegalStateException();
+                throw new IllegalStateException("Bundle could not aquire system bundle context.");
         	}
         }
         else {
         	trackerBundleContext = context;
         }
         
-        bundleServiceCaches = new BundleTracker<ServiceCache>(trackerBundleContext, Bundle.ACTIVE, null) {
+        bundleServiceCaches = 
+        		new BundleTracker<ServiceCache>(trackerBundleContext, Bundle.STARTING | Bundle.ACTIVE | Bundle.STOPPING, null) {
             @Override
             public ServiceCache addingBundle(Bundle bundle, BundleEvent event) {
                 return new ServiceCache(bundle.getBundleContext());
