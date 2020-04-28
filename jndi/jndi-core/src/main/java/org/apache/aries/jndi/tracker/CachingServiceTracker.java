@@ -43,22 +43,16 @@ public class CachingServiceTracker<S> extends ServiceTracker<S, ServiceReference
         open();
     }
 
-    public ServiceReference<S> find(String identifier) {
-        Map<String, ServiceReference<S>> c = cache;
-        if (c == null) {
-            synchronized (this) {
-                if (cache == null) {
-                    cache = new HashMap<>();
-                    for (ServiceReference<S> ref : getReferences()) {
-                        for (String key : properties.apply(ref)) {
-                            cache.putIfAbsent(key, ref);
-                        }
-                    }
+    public synchronized ServiceReference<S> find(String identifier) {
+        if (cache == null) {
+            cache = new HashMap<>();
+            for (ServiceReference<S> ref : getReferences()) {
+                for (String key : properties.apply(ref)) {
+                    cache.putIfAbsent(key, ref);
                 }
-                c = cache;
             }
         }
-        return c.get(identifier);
+        return cache.get(identifier);
     }
 
     public List<ServiceReference<S>> getReferences() {
@@ -80,7 +74,7 @@ public class CachingServiceTracker<S> extends ServiceTracker<S, ServiceReference
         cache = null;
     }
 
-    public void modifiedService(ServiceReference<S> reference, ServiceReference<S> service) {
+    public synchronized void modifiedService(ServiceReference<S> reference, ServiceReference<S> service) {
         cache = null;
     }
 }
