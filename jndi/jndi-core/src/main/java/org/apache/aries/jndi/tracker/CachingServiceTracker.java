@@ -53,8 +53,8 @@ public class CachingServiceTracker<S> extends ServiceTracker<S, ServiceReference
                             c.putIfAbsent(key, ref);
                         }
                     }
+                    cache = c;
                 }
-                cache = c;
             }
         }
         return cache.get(identifier);
