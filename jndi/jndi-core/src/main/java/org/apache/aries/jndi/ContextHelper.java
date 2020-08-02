@@ -109,7 +109,13 @@ public final class ContextHelper {
         final Bundle jndiBundle = FrameworkUtil.getBundle(ContextHelper.class);
         // if we are outside OSGi (like in our unittests) then we would get Null back here, so just make sure we don't.
         if (jndiBundle != null) {
-            BundleContext jndiBundleContext = Utils.doPrivileged(jndiBundle::getBundleContext);
+//            BundleContext jndiBundleContext = Utils.doPrivileged(jndiBundle::getBundleContext);
+        	BundleContext jndiBundleContext = Utils.doPrivileged( new Gen<BundleContext>() 
+        	{
+        		public BundleContext f() {
+        			return jndiBundle.getBundleContext();
+        		}
+        	});
             if (!jndiBundleContext.getClass().equals(context.getClass())) {
                 //the context passed in must have come from a child framework
                 //use the parent context instead
@@ -139,10 +145,11 @@ public final class ContextHelper {
         String contextFactoryClass = (String) environment.get(Context.INITIAL_CONTEXT_FACTORY);
         if (contextFactoryClass == null) {
             // 1. get ContextFactory using builder
-            provider = getInitialContextUsingBuilder(context, environment)
+            provider = getInitialContextUsingBuilder(context, environment);
             // 2. lookup all ContextFactory services
-                    .orElseGet(() -> getInitialContextUsingFactoryServices(context, environment)
-                            .orElse(null));
+            if (provider == null) {		
+                provider = getInitialContextUsingFactoryServices(context, environment);
+            }        
 
         } else {
             // 1. lookup using specified InitialContextFactory
@@ -157,30 +164,29 @@ public final class ContextHelper {
 
             // 2. get ContextFactory using builder
             if (provider == null) {
-                provider = getInitialContextUsingBuilder(context, environment).orElse(null);
+                provider = getInitialContextUsingBuilder(context, environment);
             }
         }
-
         return provider;
     }
 
-    private static Optional<ContextProvider> getInitialContextUsingFactoryServices(BundleContext context, Hashtable<?, ?> environment) {
+    private static ContextProvider getInitialContextUsingFactoryServices(BundleContext context, Hashtable<?, ?> environment) {
         for (ServiceReference<InitialContextFactory> reference : Activator.getInitialContextFactoryServices()) {
             try {
                 InitialContextFactory factory = Activator.getService(context, reference);
                 Context initialContext = factory.getInitialContext(environment);
                 if (initialContext != null) {
-                    return Optional.of(new SingleContextProvider(context, reference, initialContext));
+                    return new SingleContextProvider(context, reference, initialContext);
                 }
             } catch (NamingException e) {
                 // ignore this, if the builder fails we want to move onto the next one
                 logger.log(Level.FINE, "Exception caught", e);
             }
         }
-        return Optional.empty();
+        return null;
     }
 
-    private static Optional<ContextProvider> getInitialContextUsingBuilder(BundleContext context,
+    private static ContextProvider getInitialContextUsingBuilder(BundleContext context,
     		Hashtable<?, ?> environment) throws NamingException {
     	
     	for (ServiceReference<InitialContextFactoryBuilder> ref : Activator.getInitialContextFactoryBuilderServices()) {
@@ -196,9 +202,9 @@ public final class ContextHelper {
     			throw npe;
     		}
     		if (factory != null) {
-    			return Optional.of(new SingleContextProvider(context, ref, factory.getInitialContext(environment)));
+    			return new SingleContextProvider(context, ref, factory.getInitialContext(environment));
     		}
     	}
-    	return Optional.empty();
+    	return null;
     }
 }

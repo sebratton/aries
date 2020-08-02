@@ -33,8 +33,6 @@ import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.function.Function;
-import java.util.function.Supplier;
 
 /**
  */
@@ -53,7 +51,12 @@ public final class Utils {
      * @throws NamingException
      */
     public static BundleContext getBundleContext(final Map<?, ?> env, final Class<?> namingClass) {
-        return doPrivileged(() -> doGetBundleContext(env, namingClass));
+        return doPrivileged( new Gen<BundleContext>() {
+        	public BundleContext f() {
+        		return doGetBundleContext(env, namingClass);
+        	}
+        }
+        );
     }
 
     private static BundleContext doGetBundleContext(Map<?, ?> env, Class<?> namingClass) {
@@ -113,7 +116,11 @@ public final class Utils {
     }
 
     public static String getSystemProperty(final String key, final String defaultValue) {
-        return doPrivileged(() -> System.getProperty(key, defaultValue));
+        return doPrivileged( new Gen<String> () {
+        	public String f() {
+        		return System.getProperty(key, defaultValue); 
+        	}
+        });
     }
 
     public static Hashtable<?, ?> toHashtable(Map<?, ?> map) {
@@ -128,12 +135,17 @@ public final class Utils {
         return env;
     }
 
-    public static <T> T doPrivileged(Supplier<T> action) {
-        if (System.getSecurityManager() != null) {
-            return AccessController.doPrivileged((PrivilegedAction<T>) action::get);
-        } else {
-            return action.get();
-        }
+    public static <T> T doPrivileged(final Gen<T> action) {
+    	if (System.getSecurityManager() != null) {
+    		return AccessController.doPrivileged(new PrivilegedAction<T>() 
+    		{
+    			public T run() {
+    				return action.f();
+    			}
+    		});
+    	} else {
+    		return action.f();
+    	}
     }
 
     public interface Callable<V, E extends Exception> {
@@ -147,10 +159,15 @@ public final class Utils {
     }
 
     @SuppressWarnings("unchecked")
-    public static <T, E extends Exception> T doPrivilegedE(Callable<T, E> action) throws E {
+    public static <T, E extends Exception> T doPrivilegedE(final Callable<T, E> action) throws E {
         if (System.getSecurityManager() != null) {
             try {
-                return AccessController.doPrivileged((PrivilegedExceptionAction<T>) action::call);
+                return AccessController.doPrivileged( new PrivilegedExceptionAction<T>() {
+					@Override
+					public T run() throws Exception {
+						return action.call();
+					}
+                });            
             } catch (PrivilegedActionException e) {
                 throw (E) e.getException();
             }
@@ -165,18 +182,18 @@ public final class Utils {
         }
     }
 
-    public static <U, V> Iterator<V> map(Iterator<U> iterator, Function<U, V> mapper) {
+    public static <U, V> Iterator<V> map(Iterator<U> iterator, Fn<U, V> mapper) {
         return new MappedIterator<>(iterator, mapper);
     }
 
     private static class MappedIterator<U, V> implements Iterator<V> {
 
         private final Iterator<U> iterator;
-        private final Function<U, V> mapper;
+        private final Fn<U, V> mapper;
         private V nextElement;
         private boolean hasNext;
 
-        public MappedIterator(Iterator<U> iterator, Function<U, V> mapper) {
+        public MappedIterator(Iterator<U> iterator, Fn<U, V> mapper) {
             this.iterator = iterator;
             this.mapper = mapper;
             nextMatch();
@@ -198,7 +215,7 @@ public final class Utils {
         private V nextMatch() {
             V oldMatch = nextElement;
             while (iterator.hasNext()) {
-                V o = mapper.apply(iterator.next());
+                V o = mapper.f(iterator.next());
                 if (o != null) {
                     hasNext = true;
                     nextElement = o;

@@ -99,13 +99,23 @@ public class Activator implements BundleActivator {
         return cache.getReferences(clazz);
     }
 
-    public static <T> Iterable<T> getServices(BundleContext context, Class<T> clazz) {
+    public static <T> Iterable<T> getServices(final BundleContext context, Class<T> clazz) {
         ServiceCache cache = getServiceCache(context);
         if (cache == null) {
             cache = new ServiceCache(context);
         }
-        Collection<ServiceReference<T>> refs = cache.getReferences(clazz);
-        return () -> Utils.map(refs.iterator(), ref -> Activator.getService(context, ref));
+        final Collection<ServiceReference<T>> refs = cache.getReferences(clazz);
+        return new Iterable<T>() {
+			@Override
+			public Iterator<T> iterator() {
+				return Utils.map(refs.iterator(), new Fn<ServiceReference<T>, T>() {
+					@Override
+					public T f(ServiceReference<T> ref) {
+						return Activator.getService(context, ref);
+					}
+				});
+			}
+		};
     }
 
     private static ServiceCache getServiceCache(BundleContext context) {
@@ -143,8 +153,20 @@ public class Activator implements BundleActivator {
         };
         bundleServiceCaches.open();
 
-        initialContextFactories = new CachingServiceTracker<>(trackerBundleContext, InitialContextFactory.class, Activator::getInitialContextFactoryInterfaces);
-        objectFactories = new CachingServiceTracker<>(trackerBundleContext, ObjectFactory.class, Activator::getObjectFactorySchemes);
+        initialContextFactories = new CachingServiceTracker<InitialContextFactory>(trackerBundleContext, InitialContextFactory.class, new Fn<ServiceReference<InitialContextFactory>, Iterable<String>>() {
+        	public Iterable<String> f(ServiceReference<InitialContextFactory> ref) {
+        		return Activator.getInitialContextFactoryInterfaces(ref);
+        	}
+        });
+        		//Activator::getInitialContextFactoryInterfaces);
+        
+        objectFactories = new CachingServiceTracker<ObjectFactory>(trackerBundleContext, ObjectFactory.class, new Fn<ServiceReference<ObjectFactory>, Iterable<String>>() {
+        	public Iterable<String> f(ServiceReference<ObjectFactory> ref) {
+        		return Activator.getObjectFactorySchemes(ref);
+        	}
+        });
+        		//Activator::getObjectFactorySchemes);
+        
         icfBuilders = new CachingServiceTracker<>(trackerBundleContext, InitialContextFactoryBuilder.class);
         urlObjectFactoryFinders = new CachingServiceTracker<>(trackerBundleContext, URLObjectFactoryFinder.class);
 
@@ -298,7 +320,6 @@ public class Activator implements BundleActivator {
                 resultList.add(interfaceName);
             }
         }
-
         return resultList;
     }
 
@@ -330,16 +351,41 @@ public class Activator implements BundleActivator {
 
         @SuppressWarnings("unchecked")
         <T> T getService(ServiceReference<T> ref) {
-            return (T) cache.computeIfAbsent(ref, this::doGetService);
+        	
+        	T hit = (T) cache.get(ref);
+        	if (hit == null) {
+        		synchronized (cache) {
+        			hit = (T) cache.get(ref);
+        			if (hit == null) {
+        				hit = (T) this.doGetService(ref);
+        				cache.put(ref, hit);
+        			}
+        		}
+        	}
+        	return hit;
         }
 
         @SuppressWarnings("unchecked")
         <T> Collection<ServiceReference<T>> getReferences(Class<T> clazz) {
-            return (List) trackers.computeIfAbsent(clazz, c -> new CachingServiceTracker<>(context, c)).getReferences();
+        	CachingServiceTracker<?> hit =  trackers.get(clazz);
+        	if (hit == null) {        		
+        		synchronized (trackers) {
+        			hit =  trackers.get(clazz);
+        			if (hit == null) {
+        			    hit = new CachingServiceTracker<>(context, clazz);
+        				trackers.put(clazz, hit);
+        			}
+        		}
+        	}
+    		return (List) hit.getReferences();
         }
 
-        Object doGetService(ServiceReference<?> ref) {
-            return Utils.doPrivileged(() -> context.getService(ref));
+        Object doGetService(final ServiceReference<?> ref) {
+            return Utils.doPrivileged(new Gen<Object>() {
+            	public Object  f() {
+            		return  context.getService(ref);
+            	}
+            });
         }
     }
 
