@@ -18,26 +18,32 @@
  */
 package org.apache.aries.jndi.tracker;
 
+import org.apache.aries.jndi.Fn;
+import org.apache.aries.jndi.Gen;
 import org.apache.aries.jndi.Utils;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceReference;
 import org.osgi.util.tracker.ServiceTracker;
 
 import java.util.*;
-import java.util.function.Function;
 
 public class CachingServiceTracker<S> extends ServiceTracker<S, ServiceReference<S>> {
 
     /** The cached references */
     private volatile Map<String, ServiceReference<S>> cache;
     /** The funtion to obtain the identifiers */
-    private final Function<ServiceReference<S>, Iterable<String>> properties;
+    private final Fn<ServiceReference<S>, Iterable<String>> properties;
 
     public CachingServiceTracker(BundleContext context, Class<S> clazz) {
-        this(context, clazz, ref -> Collections.emptyList());
+        this(context, clazz, new Fn<ServiceReference<S>, Iterable<String>>() {
+			@Override
+			public Iterable<String> f(ServiceReference<S> ref) {
+				return Collections.emptyList();
+			}
+		});
     }
 
-    public CachingServiceTracker(BundleContext context, Class<S> clazz, Function<ServiceReference<S>, Iterable<String>> properties) {
+    public CachingServiceTracker(BundleContext context, Class<S> clazz, Fn<ServiceReference<S>, Iterable<String>> properties) {
         super(context, clazz, null);
         this.properties = properties;
         open();
@@ -49,7 +55,7 @@ public class CachingServiceTracker<S> extends ServiceTracker<S, ServiceReference
             	Map<String, ServiceReference<S>> c = new HashMap<>();
                 if (cache == null) {                	
                     for (ServiceReference<S> ref : getReferences()) {
-                        for (String key : properties.apply(ref)) {
+                        for (String key : properties.f(ref)) {
                             c.putIfAbsent(key, ref);
                         }
                     }
@@ -61,9 +67,23 @@ public class CachingServiceTracker<S> extends ServiceTracker<S, ServiceReference
     }
 
     public List<ServiceReference<S>> getReferences() {
-        ServiceReference<S>[] refs = Utils.doPrivileged(this::getServiceReferences);
+    	final CachingServiceTracker<S> cst = this;
+        ServiceReference<S>[] refs = Utils.doPrivileged( new Gen<ServiceReference<S>[]>() {
+        	public ServiceReference<S>[] f() {
+        		return cst.getServiceReferences();
+        	}
+        });
+        
         if (refs != null) {
-            Arrays.sort(refs, Comparator.reverseOrder());
+            Arrays.sort(refs, new Comparator<ServiceReference<S>>() {
+				public int compare(ServiceReference<S> o1, ServiceReference<S> o2) {
+					if (o1.compareTo(o2) == 0 )
+					  return 0;
+					else
+				      return -o1.compareTo(o2);
+				}
+            	
+            });
             return Arrays.asList(refs);
         } else {
             return Collections.emptyList();

@@ -18,6 +18,7 @@
  */
 package org.apache.aries.jndi;
 
+import org.apache.aries.jndi.Utils.Callable;
 import org.apache.aries.jndi.startup.Activator;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceReference;
@@ -54,12 +55,16 @@ public class ObjectFactoryHelper implements ObjectFactory {
         return getObjectInstance(obj, name, nameCtx, environment, null);
     }
 
-    public Object getObjectInstance(Object obj,
-                                    Name name,
-                                    Context nameCtx,
-                                    Hashtable<?, ?> environment,
-                                    Attributes attrs) throws Exception {
-        return Utils.doPrivilegedE(() -> doGetObjectInstance(obj, name, nameCtx, environment, attrs));
+    public Object getObjectInstance(final Object obj,
+                                    final Name name,
+                                    final Context nameCtx,
+                                    final Hashtable<?, ?> environment,
+                                    final Attributes attrs) throws Exception {
+        return Utils.doPrivilegedE( new Callable<Object, Exception>() {
+        	public Object call() throws Exception {
+        		return doGetObjectInstance(obj, name, nameCtx, environment, attrs); 
+        	}
+        });
     }
 
     private Object doGetObjectInstance(Object obj,
@@ -197,7 +202,11 @@ public class ObjectFactoryHelper implements ObjectFactory {
         String factories = (String) environment.get(Context.OBJECT_FACTORIES);
         if (factories != null && factories.length() > 0) {
             String[] candidates = factories.split(":");
-            ClassLoader cl = Utils.doPrivileged(Thread.currentThread()::getContextClassLoader);
+            ClassLoader cl = Utils.doPrivileged(new Gen<ClassLoader>() {
+            	public ClassLoader f() {
+            		return Thread.currentThread().getContextClassLoader();
+            	}
+            });
             for (String cand : candidates) {
                 ObjectFactory factory;
                 try {
@@ -272,13 +281,16 @@ public class ObjectFactoryHelper implements ObjectFactory {
     }
 
     private static ObjectFactory findObjectFactoryByClassName(final BundleContext ctx, final String className) {
-        return Utils.doPrivileged(() -> {
-            ServiceReference<?> ref = ctx.getServiceReference(className);
-            if (ref != null) {
-                return (ObjectFactory) Activator.getService(ctx, ref);
-            }
-            return null;
-        });
+        return Utils.doPrivileged(new Gen<ObjectFactory>() {
+			@Override
+			public ObjectFactory f() {
+			    ServiceReference<?> ref = ctx.getServiceReference(className);
+			    if (ref != null) {
+			        return (ObjectFactory) Activator.getService(ctx, ref);
+			    }
+			    return null;
+			}
+		});
     }
 
 }
